@@ -17,36 +17,42 @@ on:
         required: true
         type: string
       data:
-        description: 'Path to the data file containing entities to publish'
+        description: 'Path to the data file containing entities to publish. Either data or artefact_name should be specified.'
+        required: false
+        type: string
+      input_artefact_name:
+        description: 'Name of the artefact that serves as input to workflow. Replaces data.'
+        required: false
+        type: string
+      changelog:
+        description: 'Path to the changelog file containing all terms to be published'
         required: true
         type: string
       target_name:
         description: 'Name of the target entity list in the data file'
         required: true
         type: string
-      server_mode:
-        description: 'Server mode: "test" for test server, "production" for production'
-        type: string
-        default: 'test'
       dry_run:
         description: 'If true, signs nanopubs but does not publish them'
         type: boolean
         default: false
-      parent_key:
-        description: 'Parent key to be provided for topological sort'
+      output_htaccess:
+        description: 'output path for htaccess file'
         type: string
         required: false
-      output:
-        description: 'output path for modified yaml file'
-        type: string
+        default: 'htaccess.txt'
+      output_artefact_name:
+        description: 'Name of the artefact that containing the .htaccess file that is generated.'
         required: false
-      output_pairs:
-        description: 'output path for identifier nanopub pairs'
         type: string
-        required: false
+        default: 'htaccess.txt'
       preflabel:
-        description: 'name of field used to create identifier using hash function.'
-        required: true
+        description: 'name of field used to create identifier using hash function. Default is label'
+        required: false
+        type: string
+      id_key:
+        description: 'name of field containing URI. Default is id.'
+        required: false
         type: string
       type_prefix:
         description: 'Default part that is added to identifier following namespace.'
@@ -98,7 +104,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip install linkml nanopub click rdflib
+          pip install linkml nanopub click rdflib pyyaml
 
       - name: Check if script exists in current branch
         id: check-script
@@ -125,11 +131,23 @@ jobs:
         run: |
           curl -s -o publish_nanopubs.py https://raw.githubusercontent.com/eu-parc/voc2nanopub/main/rules/publish_nanopubs.py
           chmod +x publish_nanopubs.py
+
+      - name: Process schema (download or copy)
+        run: |
+          if [[ "${{ inputs.linkml_schema }}" == http* ]]; then
+            # If it's a URL, download the schema
+            echo "Schema is a URL. Downloading..."
+            curl -L "${{ inputs.linkml_schema }}" -o ./schema.linkml.yml
+          else
+            # If it's a file path, copy the schema
+            echo "Schema is a file path. Copying..."
+            cp "${{ inputs.linkml_schema }}" ./schema.linkml.yml
+          fi
       
       - name: Validate inputs
         run: |
-          if [ ! -f "${{ inputs.linkml_schema }}" ]; then
-            echo "ERROR: LinkML schema file not found at ${{ inputs.linkml_schema }}"
+          if [ ! -f "schema.linkml.yml" ]; then
+            echo "ERROR: LinkML schema file not found at schema.linkml.yml"
             exit 1
           fi
           
@@ -138,14 +156,23 @@ jobs:
             exit 1
           fi
 
-      - name: Set server flag
-        id: set-server-flag
+      - name: Set data file path
+        id: data-path
         run: |
-          if [ "${{ inputs.server_mode }}" == "production" ]; then
-            echo "SERVER_FLAG=--production-server" >> $GITHUB_OUTPUT
+          if [ -n "${{ inputs.input_artefact_name }}" ]; then
+            echo "Downloading artifact: ${{ inputs.input_artefact_name }}"
+            echo "data_file=./downloaded-artifacts/${{ inputs.input_artefact_name }}" >> $GITHUB_OUTPUT
           else
-            echo "SERVER_FLAG=--test-server" >> $GITHUB_OUTPUT
+            echo "Using file from repo: ${{ inputs.data }}"
+            echo "data_file=${{ inputs.data }}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Download artifact if needed
+        if: inputs.input_artefact_name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.input_artefact_name }}
+          path: ./downloaded-artifacts
 
       - name: Set dry run flag
         id: set-dry-run
@@ -161,14 +188,12 @@ jobs:
         continue-on-error: true
         run: |
           python3 ${{ steps.check-script.outputs.SCRIPT_PATH }} \
-            --schema "${{ inputs.linkml_schema }}" \
-            --data "${{ inputs.data }}" \
-            --parent-key "${{ inputs.parent_key }}" \
+            --schema ./schema.linkml.yml \
+            --data ${{ steps.data-path.outputs.data_file }} \
+            --changelog "${{ inputs.changelog }}" \
             --target "${{ inputs.target_name }}" \
-            --output "${{ inputs.output }}" \
-            ${{ steps.set-server-flag.outputs.SERVER_FLAG }} \
             ${{ steps.set-dry-run.outputs.DRY_RUN_FLAG }} \
-            --output-pairs "${{ inputs.output_pairs }}" \
+            --output-pairs "${{ inputs.output_htaccess }}" \
             --preflabel "${{ inputs.preflabel }}" \
             --type-prefix "${{ inputs.type_prefix }}" \
             --verbose
@@ -186,19 +211,8 @@ jobs:
           echo "::error::Nanopub publishing failed"
           exit 1
     
-      - name: Push updated yaml to repository
-        if: inputs.dry_run != true
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          
-          # Check if there are changes
-          if git diff --exit-code ${{ inputs.data }}; then
-            echo "No changes to commit"
-          else
-            echo "Changes detected, committing and pushing"
-            git add "${{ inputs.data }}"
-            git commit -m "Update nanopub IDs in ${{ inputs.data }} [skip ci]"
-            git push origin ${{ github.ref }}
-          fi
-
+      - name: Upload vocabulary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.output_artefact_name }}
+          path: ./${{ inputs.output_htaccess }}
