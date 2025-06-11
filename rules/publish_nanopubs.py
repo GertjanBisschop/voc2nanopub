@@ -539,8 +539,6 @@ def main(
         label_action_map = {}
         implemented_actions = set(["added", "modified"])
 
-        assert dry_run
-
         # load data formatted according to peh linkml schema
         logger.info(f"Processing data from {data_path} using schema {schema_path}")
         yaml_root, schema_view = load_yaml(schema_path, data_path)
