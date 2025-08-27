@@ -1,19 +1,3 @@
-# LinkML to Nanopub Publishing Workflow
-
-This reusable GitHub workflow converts vocabulary terms defined in LinkML schemas to nanopublications and publishes them to a nanopub server. Nanopublications are small units of publishable information represented as RDF triples with provenance information, making your vocabulary terms citable, discoverable, and reusable.
-
-## Overview
-
-The workflow performs the following steps:
-1. Checks out your repository at the specified reference
-2. Sets up Python and installs required dependencies
-3. Loads your LinkML schema and data file
-4. Converts vocabulary terms to nanopublications
-5. Publishes the nanopublications to a server (test or production)
-6. Updates your data file with nanopublication IDs (unless in dry-run mode)
-
-## Usage
-
 # Publish Vocabulary from LinkML to Nanopub
 
 This GitHub workflow automates the process of publishing vocabulary terms defined in a [LinkML](https://linkml.io/) schema as [Nanopublications](https://nanopub.net/). It supports signing and publishing nanopubs, generating `.htaccess` files for term redirection, and controlling publication behavior via workflow inputs.
