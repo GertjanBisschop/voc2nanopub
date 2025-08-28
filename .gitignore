@@ -127,3 +127,6 @@ dmypy.json
 
 # temp
 _temp/
+
+#vscode
+.vscode/*
